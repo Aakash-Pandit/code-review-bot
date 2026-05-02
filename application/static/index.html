@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code Review Bot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: #58a6ff;
+    }
+
+    .form {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .row {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: #8b949e;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    textarea, input, select {
+      background: #161b22;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      border-radius: 6px;
+      padding: 0.6rem 0.75rem;
+      font-size: 0.9rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    textarea:focus, input:focus, select:focus {
+      border-color: #58a6ff;
+    }
+
+    textarea {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.85rem;
+      min-height: 220px;
+      resize: vertical;
+    }
+
+    .field { flex: 1; }
+
+    button {
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1.4rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      align-self: flex-end;
+    }
+
+    button:hover:not(:disabled) { background: #2ea043; }
+    button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+    .output-wrap {
+      width: 100%;
+      max-width: 860px;
+      margin-top: 1.5rem;
+    }
+
+    .output-label {
+      font-size: 0.8rem;
+      color: #8b949e;
+      margin-bottom: 0.4rem;
+    }
+
+    #output {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      min-height: 80px;
+      color: #e6edf3;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #484f58;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>Code Review Bot</h1>
+
+  <div class="form">
+    <div>
+      <label for="code">Paste your code</label>
+      <textarea id="code" placeholder="// paste code here..."></textarea>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="language">Language (optional)</label>
+        <input id="language" type="text" placeholder="e.g. Python, TypeScript" />
+      </div>
+      <div class="field">
+        <label for="mode">Review mode</label>
+        <select id="mode">
+          <option value="full">Full review</option>
+          <option value="security">Security only</option>
+          <option value="performance">Performance only</option>
+          <option value="explain">Explain code</option>
+        </select>
+      </div>
+      <button id="submit-btn" onclick="submitReview()">Review</button>
+    </div>
+  </div>
+
+  <div class="output-wrap">
+    <div class="output-label" id="output-label"></div>
+    <div id="output"></div>
+  </div>
+
+  <script>
+    async function submitReview() {
+      const code = document.getElementById("code").value.trim();
+      if (!code) return;
+
+      const language = document.getElementById("language").value.trim() || null;
+      const mode = document.getElementById("mode").value;
+      const btn = document.getElementById("submit-btn");
+      const output = document.getElementById("output");
+      const label = document.getElementById("output-label");
+
+      btn.disabled = true;
+      output.innerHTML = '<span class="spinner"></span>';
+      label.textContent = "Reviewing…";
+
+      try {
+        const res = await fetch("/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, language, mode }),
+        });
+
+        if (!res.ok) {
+          output.textContent = `Error: ${res.status} ${res.statusText}`;
+          label.textContent = "Failed";
+          return;
+        }
+
+        output.textContent = "";
+        label.textContent = "Review";
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          output.textContent += decoder.decode(value, { stream: true });
+        }
+      } catch (err) {
+        output.textContent = `Error: ${err.message}`;
+        label.textContent = "Failed";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById("code").addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitReview();
+    });
+  </script>
+</body>
+</html>
