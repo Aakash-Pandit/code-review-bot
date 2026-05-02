@@ -18,12 +18,31 @@
       padding: 2rem 1rem;
     }
 
-    h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
+    header {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: 1.5rem;
-      color: #58a6ff;
     }
+
+    h1 { font-size: 1.5rem; font-weight: 600; color: #58a6ff; }
+
+    .user-info { font-size: 0.82rem; color: #8b949e; display: flex; align-items: center; gap: 0.75rem; }
+
+    .logout-btn {
+      background: none;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      border-radius: 6px;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .logout-btn:hover { border-color: #f85149; color: #f85149; }
 
     .form {
       width: 100%;
@@ -33,10 +52,7 @@
       gap: 0.75rem;
     }
 
-    .row {
-      display: flex;
-      gap: 0.75rem;
-    }
+    .row { display: flex; gap: 0.75rem; }
 
     label {
       font-size: 0.8rem;
@@ -57,9 +73,7 @@
       transition: border-color 0.15s;
     }
 
-    textarea:focus, input:focus, select:focus {
-      border-color: #58a6ff;
-    }
+    textarea:focus, input:focus, select:focus { border-color: #58a6ff; }
 
     textarea {
       font-family: "SFMono-Regular", Consolas, monospace;
@@ -70,7 +84,7 @@
 
     .field { flex: 1; }
 
-    button {
+    button#submit-btn {
       background: #238636;
       color: #fff;
       border: none;
@@ -83,20 +97,11 @@
       align-self: flex-end;
     }
 
-    button:hover:not(:disabled) { background: #2ea043; }
-    button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+    button#submit-btn:hover:not(:disabled) { background: #2ea043; }
+    button#submit-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
 
-    .output-wrap {
-      width: 100%;
-      max-width: 860px;
-      margin-top: 1.5rem;
-    }
-
-    .output-label {
-      font-size: 0.8rem;
-      color: #8b949e;
-      margin-bottom: 0.4rem;
-    }
+    .output-wrap { width: 100%; max-width: 860px; margin-top: 1.5rem; }
+    .output-label { font-size: 0.8rem; color: #8b949e; margin-bottom: 0.4rem; }
 
     #output {
       background: #161b22;
@@ -124,10 +129,26 @@
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes dots {
+      0%,  20% { content: ".";   }
+      40%       { content: "..";  }
+      60%, 100% { content: "..."; }
+    }
+    .loading-dots::after {
+      content: ".";
+      animation: dots 1.2s steps(1, end) infinite;
+    }
   </style>
 </head>
 <body>
-  <h1>Code Review Bot</h1>
+  <header>
+    <h1>Code Review Bot</h1>
+    <div class="user-info">
+      <span id="user-email"></span>
+      <button class="logout-btn" onclick="logout()">Log out</button>
+    </div>
+  </header>
 
   <div class="form">
     <div>
@@ -158,6 +179,21 @@
   </div>
 
   <script>
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login";
+    } else {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        document.getElementById("user-email").textContent = payload.email || "";
+      } catch (_) {}
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+
     async function submitReview() {
       const code = document.getElementById("code").value.trim();
       if (!code) return;
@@ -169,15 +205,28 @@
       const label = document.getElementById("output-label");
 
       btn.disabled = true;
-      output.innerHTML = '<span class="spinner"></span>';
+      output.innerHTML =
+        '<span class="spinner"></span>' +
+        '<span style="margin-left:8px;color:#8b949e;font-style:italic;">' +
+        'Model is reviewing your code<span class="loading-dots"></span>' +
+        '</span>';
       label.textContent = "Reviewing…";
 
       try {
         const res = await fetch("/review", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
           body: JSON.stringify({ code, language, mode }),
         });
+
+        if (res.status === 401) {
+          localStorage.removeItem("token");
+          window.location.href = "/login";
+          return;
+        }
 
         if (!res.ok) {
           output.textContent = `Error: ${res.status} ${res.statusText}`;
@@ -185,15 +234,19 @@
           return;
         }
 
-        output.textContent = "";
         label.textContent = "Review";
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
+        let firstChunk = true;
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          if (firstChunk) {
+            output.textContent = "";
+            firstChunk = false;
+          }
           output.textContent += decoder.decode(value, { stream: true });
         }
       } catch (err) {
