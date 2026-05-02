@@ -105,12 +105,20 @@ async def stream_llm(prompt: str, model: str):
 
 
 @app.post("/stream")
-async def stream(request: ChatRequest, _=Depends(require_authenticated_user)):
+async def stream(request: ChatRequest, user=Depends(require_authenticated_user)):
+    logger.info(
+        "POST /stream",
+        extra={"user_id": user.user_id, "email": user.email, "query": request.query[:200]},
+    )
     return StreamingResponse(stream_llm(request.query, OLLAMA_MODEL), media_type="text/plain")
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, _=Depends(require_authenticated_user)):
+async def chat(request: ChatRequest, user=Depends(require_authenticated_user)):
+    logger.info(
+        "POST /chat",
+        extra={"user_id": user.user_id, "email": user.email, "query": request.query[:200]},
+    )
     async with httpx.AsyncClient(timeout=None) as client:
         response = await client.post(
             f"{OLLAMA_HOST}/api/generate",
@@ -122,6 +130,16 @@ async def chat(request: ChatRequest, _=Depends(require_authenticated_user)):
 
 
 @app.post("/review")
-async def review(request: ReviewRequest, _=Depends(require_authenticated_user)):
+async def review(request: ReviewRequest, user=Depends(require_authenticated_user)):
+    logger.info(
+        "POST /review",
+        extra={
+            "user_id": user.user_id,
+            "email": user.email,
+            "mode": request.mode,
+            "language": request.language,
+            "code_chars": len(request.code),
+        },
+    )
     prompt = build_review_prompt(request.code, request.language, request.mode)
     return StreamingResponse(stream_llm(prompt, OLLAMA_MODEL), media_type="text/plain")
