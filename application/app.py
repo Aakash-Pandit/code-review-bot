@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException
@@ -23,10 +24,19 @@ from users.apis import router as users_router
 
 logging.getLogger("onnxruntime").setLevel(logging.ERROR)
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables ready")
+    yield
+
+
 app = FastAPI(
     title="Code Review Bot API",
     description="API for Code Review Bot powered by Ollama",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(AuthenticationMiddleware, backend=JWTAuthBackend())
@@ -51,11 +61,6 @@ _REVIEW_INSTRUCTIONS = {
     "explain": "Explain what this code does in plain English. Describe its purpose, how it works, and any notable design decisions.",
 }
 
-
-@app.on_event("startup")
-async def startup():
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables ready")
 
 
 def build_review_prompt(code: str, language: str | None, mode: str | None) -> str:
