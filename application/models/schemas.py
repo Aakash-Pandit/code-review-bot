@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -12,3 +14,9 @@ class ChatResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class ReviewRequest(BaseModel):
+    code: str
+    language: Optional[str] = None
+    mode: Optional[str] = "full"  # full | security | performance | explain
