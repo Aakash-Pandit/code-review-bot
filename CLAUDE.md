@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A FastAPI service that proxies chat requests to a locally-running Ollama instance (using the `phi3` model). The stack is Docker Compose: a `fast-api` service, an `ollama` service, and an `ollama-init` service that pulls the model on first run.
+A FastAPI service that acts as a code review bot backed by a locally-running Ollama instance (`qwen2.5-coder:7b`). Users paste code into the web UI, pick a review mode, and get streaming feedback. The stack is Docker Compose: a `fast-api` service, an `ollama` service, and an `ollama-init` service that pulls the model on first run.
 
 ## Commands
 
@@ -30,18 +30,20 @@ The API runs on port `8000` (configurable via `API_PORT` env var). Interactive d
 ## Architecture
 
 ```
-main.py                         # Entrypoint — reads API_PORT, starts uvicorn
+main.py                              # Entrypoint — reads API_PORT, starts uvicorn
 application/
-  app.py                        # FastAPI app, CORS middleware, all route handlers
-  models/schemas.py             # Pydantic request/response models
-compose/Dockerfile              # python:3.11-slim, hot-reload via uvicorn --reload
-docker-compose.yml              # fast-api + ollama + ollama-init services
+  app.py                             # FastAPI app, all route handlers, stream_llm(), build_review_prompt()
+  models/schemas.py                  # Pydantic models: ChatRequest/Response, ReviewRequest, HealthResponse
+  static/index.html                  # Single-page frontend (no build step)
+compose/Dockerfile                   # python:3.11-slim, hot-reload via uvicorn --reload
+docker-compose.yml                   # fast-api + ollama + ollama-init services
 ```
 
-**Request flow:** Client → FastAPI (`/chat` or `/stream`) → `httpx` async call → Ollama API (`/api/generate`) → phi3 model.
+**Core review flow:** `POST /review` → `build_review_prompt()` constructs a system prompt → `stream_llm()` streams tokens from Ollama → `StreamingResponse` sends them to the client.
 
-- `/chat` — collects full response, returns `ChatResponse(query, answer)`
-- `/stream` — returns a `StreamingResponse`, streaming tokens as plain text
+**Review modes** (`mode` field on `ReviewRequest`): `full`, `security`, `performance`, `explain`.
+
+The frontend at `/` uses `fetch()` + `ReadableStream` to consume the streaming response and render it incrementally. Cmd/Ctrl+Enter submits.
 
 ## Environment Variables
 
@@ -51,3 +53,4 @@ Copy `.env.example` to `.env` before starting:
 |---|---|---|
 | `API_PORT` | `8000` | Host port for the FastAPI service |
 | `OLLAMA_HOST` | `http://ollama:11434` | Ollama base URL (use `http://localhost:11434` for local dev without Docker) |
+| `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Ollama model name — change to swap models without code edits |
